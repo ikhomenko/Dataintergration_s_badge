@@ -3,28 +3,38 @@ public class ProjectCalloutService {
     @InvocableMethod
 	public static void postOpportunityToPMS(List<Id> oppIds){
         if (!oppIds.isEmpty()) {
-            postOpportunitiesToPMS(oppIds);
+            System.enqueueJob(new QueueablePMSCall(oppIds.get(0)));
         }
     }
 
-    @future(callout=true)
-    public static void postOpportunitiesToPMS(List<Id> oppIds) {
-        Opportunity opp = [
-                SELECT Id, Name, Account.Name, CloseDate, Amount
-                FROM Opportunity
-                WHERE Id IN :oppIds
-                LIMIT 1
-        ];
-        if(opp == null) return ;
+    public class QueueablePMSCall implements Queueable, Database.AllowsCallouts {
 
-        HttpRequest request = new HttpRequest();
-            request.setEndpoint('callout:ProjectService');
-            request.setMethod('POST');
-            request.setHeader('token', ServiceTokens__c.getInstance('ProjectServiceToken').Token__c);
-            request.setHeader('Content-Type', 'application/json;charset=UTF-8');
-            request.setBody(JSON.serialize(new OppModel(opp)));
+        private Id oppId;
 
-        HttpResponse response = new Http().send(request);
+        public QueueablePMSCall(Id oppId) {
+            this.oppId = oppId;
+        }
+        public void execute(System.QueueableContext qc) {
+            List<Opportunity> opportunities = [
+                    SELECT Id, Name, Account.Name, CloseDate, Amount
+                    FROM Opportunity
+                    WHERE Id = :oppId
+            ];
+            if(opportunities.isEmpty()) return ;
+            Opportunity opp = opportunities.get(0);
+
+            HttpRequest request = new HttpRequest();
+                request.setEndpoint('callout:ProjectService');
+                request.setMethod('POST');
+                request.setHeader('token', ServiceTokens__c.getInstance('ProjectServiceToken').Token__c);
+                request.setHeader('Content-Type', 'application/json;charset=UTF-8');
+                request.setBody(JSON.serialize(new OppModel(opp)));
+
+            HttpResponse response = new Http().send(request);
+
+            opp.StageName = response.getStatusCode() == 201 ? 'Submitted Project' : 'Resubmit Project';
+            update opp;
+        }
     }
 
     public class OppModel {
