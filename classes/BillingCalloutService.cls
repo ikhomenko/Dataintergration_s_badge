@@ -4,7 +4,7 @@ public class BillingCalloutService {
     public static void callBillingService(String projectId) {
 
         List<Project__c> projects = [
-                SELECT Id
+                SELECT Id, ProjectRef__c, Billable_Amount__c
                 FROM Project__c
                 WHERE Id = :projectId AND ProjectRef__c <> null AND Billable_Amount__c <> null
         ];
